@@ -583,6 +583,24 @@ class Orchestrator extends EventEmitter {
     const stage = PIPELINE_STAGES.find(s => s.id === stageId);
     if (!stage) throw new Error(`Unknown stage: ${stageId}`);
     if (!datasetId) throw new Error('datasetId required');
+
+    // A noJob stage has no prompt, so _runStage would dereference undefined.
+    // _maybeAdvance skips these; the manual path has to route them instead.
+    if (stage.noJob) {
+      if (stage.id !== 'normalize') {
+        throw new Error(`Stage ${stage.id} cannot be triggered manually`);
+      }
+      const dataset = this.deps?.state?.datasets?.[datasetId];
+      if (!dataset) throw new Error(`Unknown dataset: ${datasetId}`);
+      if (dataset.status !== 'pending') {
+        throw new Error(
+          `Dataset ${datasetId} is not pending normalization (status: ${dataset.status})`
+        );
+      }
+      await this._normalizeAndStart(datasetId);
+      return;
+    }
+
     await this._runStage(stage, { datasetId });
   }
 
