@@ -5,13 +5,17 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "Resetting lean backend..."
 
-# # Check if backend is still running (port 8081, or LEAN_PORT if overridden)
-# LEAN_PORT="${LEAN_PORT:-8081}"
-# BACKEND_PID=$(netstat -ano 2>/dev/null | grep ":${LEAN_PORT} " | grep LISTENING | awk '{print $NF}' | head -1)
-# if [ -n "$BACKEND_PID" ]; then
-#   echo "ERROR: Backend is running (PID $BACKEND_PID on port ${LEAN_PORT}). Stop it first, then re-run reset.sh"
-#   exit 1
-# fi
+# Refuse to wipe state out from under a running backend. The old check shelled
+# out to `netstat -ano | grep LISTENING`, which is Windows syntax and matched
+# nothing here, so it was commented out. The backend now writes a lock file next
+# to the state it owns, which also catches a backend running on another node.
+LOCK="$SCRIPT_DIR/data/.backend.lock"
+if [ -f "$LOCK" ]; then
+  echo "ERROR: a backend still holds this state directory:"
+  sed 's/^/  /' "$LOCK"
+  echo "Stop it first, then re-run reset.sh."
+  exit 1
+fi
 
 echo '{"jobs":[],"datasets":{},"budget":{"totalCostUsd":0,"jobCount":0,"sessions":[]}}' \
   > "$SCRIPT_DIR/data/state.json"

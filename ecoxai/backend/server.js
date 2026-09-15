@@ -502,7 +502,62 @@ function watchDatasetFolder() {
 // ── Startup ───────────────────────────────────────────────────────────────────
 const PORT = process.env.LEAN_PORT || 8081;
 
+// ── Single-instance lock ──────────────────────────────────────────────────────
+// state.json, executions.db and the dataset store live on shared storage, so a
+// second backend anywhere on the cluster corrupts them together: both run the
+// orchestrator, both advance the same dataset, and each overwrites the other's
+// state. Port binding only catches a duplicate on the same host, so the lock
+// goes next to the state it protects. The holder refreshes mtime; a lock that
+// stops being refreshed is treated as abandoned.
+const LOCK_FILE = path.join(__dirname, 'data', '.backend.lock');
+const LOCK_STALE_MS = 120000;
+const LOCK_REFRESH_MS = 30000;
+
+function acquireLock() {
+  const os = require('os');
+  const me = { host: os.hostname(), pid: process.pid, startedAt: new Date().toISOString() };
+
+  if (fs.existsSync(LOCK_FILE)) {
+    let held = null;
+    try { held = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf-8')); } catch { /* unreadable: treat as stale */ }
+    const age = Date.now() - fs.statSync(LOCK_FILE).mtimeMs;
+    const sameHost = held && held.host === me.host;
+    // On this host the pid settles it; elsewhere only the heartbeat can.
+    let alive = age < LOCK_STALE_MS;
+    if (sameHost && held.pid) {
+      try { process.kill(held.pid, 0); alive = true; } catch { alive = false; }
+    }
+    if (alive && !process.env.ECOXAI_FORCE_UNLOCK) {
+      console.error(
+        `\nAnother EcoXAI backend holds this state directory:\n` +
+        `  host ${held?.host ?? '?'}  pid ${held?.pid ?? '?'}  since ${held?.startedAt ?? '?'}\n` +
+        `  lock ${LOCK_FILE}\n\n` +
+        `Two backends on one state directory corrupt it. Stop the other one, or\n` +
+        `set ECOXAI_FORCE_UNLOCK=1 if you are certain it is gone.\n`
+      );
+      process.exit(1);
+    }
+    console.warn(`[Lock] Taking over ${alive ? 'force-unlocked' : 'abandoned'} lock from ` +
+                 `${held?.host ?? '?'}:${held?.pid ?? '?'}`);
+  }
+
+  fs.mkdirSync(path.dirname(LOCK_FILE), { recursive: true });
+  fs.writeFileSync(LOCK_FILE, JSON.stringify(me, null, 2), 'utf-8');
+  const beat = setInterval(() => {
+    try { fs.utimesSync(LOCK_FILE, new Date(), new Date()); } catch { /* released */ }
+  }, LOCK_REFRESH_MS);
+  beat.unref();
+
+  const release = () => { try { fs.unlinkSync(LOCK_FILE); } catch { /* already gone */ } };
+  process.on('exit', release);
+  for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+    process.on(sig, () => { release(); process.exit(0); });
+  }
+  console.log(`[Lock] Held by ${me.host}:${me.pid}`);
+}
+
 async function start() {
+  acquireLock();
   // Ensure data dir exists
   const dataDir = path.join(__dirname, 'data');
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
