@@ -62,11 +62,17 @@ building the environments beside it needs no privilege at all.
 | `ECOXAI_EXTRA_BINDS` | colon-separated `host:container[:ro]` mounts for agents |
 | `ECOXAI_FORCE_REBUILD=1` | rebuild the agent environment from scratch |
 
-Put large state on scratch rather than a quota-limited home:
+Put large state on shared project storage, not a quota-limited home:
 
 ```bash
-export ECOXAI_STATE_DIR=/scratch/$USER/ecoxai
+export ECOXAI_STATE_DIR=/projectnb/<project>/$USER/ecoxai
 ```
+
+Check what `/scratch` actually is on your cluster before using it. On BU SCC it
+is a node-local disk (`/dev/sda8`) that is purged periodically, so state written
+there is invisible from every other node — including the compute node a job
+lands on. The agent environment alone is ~2.2 GB and workspaces accumulate per
+job, so it needs to live somewhere shared and persistent.
 
 ## Isolation
 
