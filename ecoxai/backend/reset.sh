@@ -23,12 +23,25 @@ rm -f "$SCRIPT_DIR/data/executions.db-shm"
 rm -rf "$SCRIPT_DIR/assets"
 rm -rf "$SCRIPT_DIR/data/wikis"
 
-for vol in $(docker volume ls -q --filter name=ecoxai-workspace) ecoxai-datasets; do
-  containers=$(docker ps -a -q --filter volume="$vol")
-  [ -n "$containers" ] && docker rm -f $containers 2>/dev/null || true
-done
+# Clear agent storage. Docker keeps it in named volumes; Singularity keeps it in
+# directories under the state dir. The provisioned agent environment (image,
+# venv, node) is deliberately left alone — rebuilding it takes minutes.
+RUNTIME="$(node -e "console.log(require('$SCRIPT_DIR/services/runtimeConfig').RUNTIME)" 2>/dev/null || echo docker)"
+echo "Container runtime: $RUNTIME"
 
-docker volume rm $(docker volume ls -q --filter name=ecoxai-workspace) 2>/dev/null || true
-docker volume rm ecoxai-datasets 2>/dev/null || true
+if [ "$RUNTIME" = "singularity" ]; then
+  STATE_DIR="${ECOXAI_STATE_DIR:-$SCRIPT_DIR/data/runtime}"
+  rm -rf "$STATE_DIR/workspaces" "$STATE_DIR/datasets" "$STATE_DIR/tmp"
+  mkdir -p "$STATE_DIR/workspaces" "$STATE_DIR/datasets"
+  echo "Cleared workspaces and datasets under $STATE_DIR"
+else
+  for vol in $(docker volume ls -q --filter name=ecoxai-workspace) ecoxai-datasets; do
+    containers=$(docker ps -a -q --filter volume="$vol")
+    [ -n "$containers" ] && docker rm -f $containers 2>/dev/null || true
+  done
+
+  docker volume rm $(docker volume ls -q --filter name=ecoxai-workspace) 2>/dev/null || true
+  docker volume rm ecoxai-datasets 2>/dev/null || true
+fi
 
 echo "Done. Run 'node server.js' to start fresh."

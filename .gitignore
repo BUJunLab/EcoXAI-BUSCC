@@ -188,3 +188,7 @@ ecoxai/backend/node_modules/
 ecoxai/backend/data/state.json
 
 CLAUDE.md
+
+# EcoXAI Singularity runtime state (images, python env, node, workspaces)
+ecoxai/backend/data/runtime/
+ecoxai/backend/data/pending/

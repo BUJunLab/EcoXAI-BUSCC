@@ -890,6 +890,13 @@ class VolumeManager {
 
 }
 
-// Export singleton instance
-module.exports = new VolumeManager();
+// Export the storage implementation for the active runtime.
+// Docker keeps workspaces in daemon-managed named volumes; Singularity keeps
+// them in ordinary directories. Both expose the same API, so callers never
+// need to know which one they got.
+const runtimeConfig = require('./runtimeConfig');
+
+module.exports = runtimeConfig.IS_SINGULARITY
+  ? require('./localVolumeManager')
+  : new VolumeManager();
 module.exports.VolumeManager = VolumeManager;
