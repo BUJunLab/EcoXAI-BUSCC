@@ -63,6 +63,17 @@ const STATE_DIR = path.resolve(
 
 const WORKSPACES_DIR = path.join(STATE_DIR, 'workspaces');
 const DATASETS_DIR = path.join(STATE_DIR, 'datasets');
+
+// Threads each agent may use. Singularity gets no cgroup limits, so NumPy,
+// XGBoost and friends otherwise size their pools from the node's total core
+// count and blow past the slots the batch scheduler granted — which gets the
+// whole job killed, backend included. ECOXAI_AGENT_THREADS is the explicit
+// setting; NSLOTS is the SGE fallback. Unset means "don't clamp" (a laptop).
+const AGENT_THREADS = (() => {
+  const raw = process.env.ECOXAI_AGENT_THREADS || process.env.NSLOTS;
+  const n = parseInt(raw, 10);
+  return Number.isInteger(n) && n > 0 ? String(n) : null;
+})();
 const AGENT_DIR = path.resolve(process.env.ECOXAI_AGENT_DIR || path.join(STATE_DIR, 'agent'));
 
 /** The read-only base image, the Python environment, and the Node/Claude Code tree. */
@@ -119,6 +130,7 @@ module.exports = {
   STATE_DIR,
   WORKSPACES_DIR,
   DATASETS_DIR,
+  AGENT_THREADS,
   AGENT_DIR,
   SIF_PATH,
   VENV_DIR,

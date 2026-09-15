@@ -36,6 +36,18 @@ export PYTHONPATH="/workspace/.pylibs${PYTHONPATH:+:$PYTHONPATH}"
 export PYTHONUNBUFFERED=1
 export MPLBACKEND=Agg
 
+# Size every thread pool to the slots this job was granted. Without cgroup
+# limits these libraries each default to the node's full core count, so a
+# single fit can oversubscribe the allocation and get the job killed.
+if [ -n "${ECOXAI_AGENT_THREADS:-}" ]; then
+  export OMP_NUM_THREADS="$ECOXAI_AGENT_THREADS"
+  export OPENBLAS_NUM_THREADS="$ECOXAI_AGENT_THREADS"
+  export MKL_NUM_THREADS="$ECOXAI_AGENT_THREADS"
+  export NUMEXPR_NUM_THREADS="$ECOXAI_AGENT_THREADS"
+  export VECLIB_MAXIMUM_THREADS="$ECOXAI_AGENT_THREADS"
+  export RAYON_NUM_THREADS="$ECOXAI_AGENT_THREADS"
+fi
+
 mkdir -p /workspace/output /workspace/.claude /workspace/.pylibs
 
 TASK="${TASK:-$(cat /workspace/task.txt 2>/dev/null || echo 'No task provided')}"

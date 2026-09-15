@@ -205,7 +205,10 @@ class SingularityManager {
       for (const bind of binds) args.push('--bind', bind);
       args.push(rc.SIF_PATH, '/bin/bash', '/opt/ecoxai-bin/agent-run.sh');
 
-      await this._writeEnvFile(id, vars);
+      await this._writeEnvFile(id, {
+        ...vars,
+        ...(rc.AGENT_THREADS ? { ECOXAI_AGENT_THREADS: rc.AGENT_THREADS } : {}),
+      });
 
       const child = spawn(rc.SINGULARITY_BIN, args, {
         env: this._spawnEnv(),

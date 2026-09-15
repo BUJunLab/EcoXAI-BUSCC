@@ -99,7 +99,7 @@ Query strategy: entity_lookup + relationship_query
 **Phase 3: Cypher Generation**
 ```cypher
 MATCH (g:Gene)-[r]-(d:Disease)
-WHERE g.name =~ '(?i).*APOE.*' AND d.name =~ '(?i).*Alzheimer.*'
+WHERE toLower(g.name) CONTAINS 'apoe' AND toLower(d.name) CONTAINS 'alzheimer'
 RETURN g.name AS gene, type(r) AS relationship,
        d.name AS disease, r.confidence AS confidence
 LIMIT 20
@@ -138,7 +138,7 @@ Find indirect connections between entities:
 
 ```cypher
 MATCH path = (g:Gene)-[*1..3]-(d:Disease)
-WHERE g.name =~ '(?i).*APOE.*' AND d.name =~ '(?i).*Alzheimer.*'
+WHERE toLower(g.name) CONTAINS 'apoe' AND toLower(d.name) CONTAINS 'alzheimer'
 RETURN [node in nodes(path) | node.name] AS path
 LIMIT 5
 ```
@@ -149,7 +149,7 @@ Count relationships by type:
 
 ```cypher
 MATCH (g:Gene)-[r]->(d:Disease)
-WHERE d.name =~ '(?i).*Alzheimer.*'
+WHERE toLower(d.name) CONTAINS 'alzheimer'
 RETURN type(r) AS relationship_type, count(r) AS count
 ORDER BY count DESC
 ```
@@ -160,7 +160,7 @@ Find high-confidence associations:
 
 ```cypher
 MATCH (g:Gene)-[r:ASSOCIATED_WITH]->(d:Disease)
-WHERE d.name =~ '(?i).*Alzheimer.*' AND r.confidence > 0.8
+WHERE toLower(d.name) CONTAINS 'alzheimer' AND r.confidence > 0.8
 RETURN g.name, r.confidence, r.evidence_count
 ORDER BY r.confidence DESC
 ```

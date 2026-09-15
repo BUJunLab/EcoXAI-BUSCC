@@ -130,7 +130,7 @@ if domain == 'genomics' or any(e.upper() in [c.upper() for c in df.columns] for 
     with driver.session() as session:
         result = session.run("""
             MATCH (g:Gene)-[:GENEASSOCIATESWITHDISEASE]->(d:Disease)
-            WHERE d.commonName =~ '(?i).*Alzheimer.*'
+            WHERE toLower(d.commonName) CONTAINS 'alzheimer'
             RETURN g.geneSymbol AS gene
             LIMIT 50
         """)
@@ -139,7 +139,7 @@ if domain == 'genomics' or any(e.upper() in [c.upper() for c in df.columns] for 
     with driver.session() as session:
         result = session.run("""
             MATCH (g:Gene)-[:GENEINPATHWAY]->(p:Pathway)
-            WHERE p.commonName =~ '(?i).*amyloid.*'
+            WHERE toLower(p.commonName) CONTAINS 'amyloid'
             RETURN g.geneSymbol AS gene, p.commonName AS pathway
         """)
         amyloid_genes = [r['gene'] for r in result]
