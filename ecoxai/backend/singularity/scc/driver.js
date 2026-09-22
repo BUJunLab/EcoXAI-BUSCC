@@ -26,6 +26,7 @@ async function api(method, path, body) {
 }
 
 const TERMINAL = new Set(['complete', 'completed', 'failed', 'error', 'stopped']);
+const RUNNING = new Set(['in-progress', 'running', 'queued', 'pending']);
 const seen = new Map();
 let settleTimer = null;
 let budget = 0;
@@ -96,8 +97,11 @@ ws.on('message', async raw => {
     // active dataset with no jobs at all. An already-normalized dataset whose
     // explore job died on start falls through all three, so nudge it directly.
     setTimeout(async () => {
-      const running = [...seen.values()].some(j => !TERMINAL.has(j.status));
-      if (running) return;
+      // Ask the backend rather than trusting the local view of events.
+      const st = await api('GET', '/api/pipeline/status').catch(() => ({}));
+      const active = (st.active || []).length > 0
+        || [...seen.values()].some(j => !TERMINAL.has(j.status));
+      if (active) return;
       log('resume produced no running job — triggering explore directly');
       log('  ->', JSON.stringify(await api('POST', '/api/pipeline/trigger/explore',
                                            { datasetId: ds.id })));
@@ -111,10 +115,22 @@ ws.on('message', async raw => {
     return;
   }
 
-  if (m.type === 'JOB_UPDATE') return track(m.job || m, 'update  ');
-  if (m.type === 'JOB_COMPLETED') return track({ ...(m.job || m), status: 'complete' }, 'complete');
-  if (m.type === 'JOB_FAILED') return track({ ...(m.job || m), status: 'failed' }, 'FAILED  ');
-  if (m.type === 'JOB_STOPPED') return track({ ...(m.job || m), status: 'stopped' }, 'stopped ');
+  // JOB_UPDATE carries the whole job list under `jobs`; JOB_COMPLETED /
+  // JOB_FAILED / JOB_STOPPED carry only a jobId. Neither has a `job` field, so
+  // the earlier `m.job || m` never tracked anything, `seen` stayed empty, the
+  // 45-second fallback re-triggered explore on top of the one already running,
+  // and "all jobs settled" could never fire.
+  if (m.type === 'JOB_UPDATE') {
+    (m.jobs || (m.job ? [m.job] : [])).forEach(j => track(j, 'update  '));
+    return;
+  }
+  if (m.type === 'JOB_COMPLETED' || m.type === 'JOB_FAILED' || m.type === 'JOB_STOPPED') {
+    const id = m.jobId || m.job?.id;
+    const status = m.type === 'JOB_COMPLETED' ? 'complete' : m.type === 'JOB_FAILED' ? 'failed' : 'stopped';
+    if (id) track({ ...(seen.get(id) || {}), ...(m.job || {}), id, status, exitCode: m.exitCode },
+                  m.type === 'JOB_COMPLETED' ? 'complete' : 'FAILED  ');
+    return;
+  }
 
   if (m.type === 'JOB_OUTPUT') {
     // The agent's own stdout — the real evidence that the container ran.
