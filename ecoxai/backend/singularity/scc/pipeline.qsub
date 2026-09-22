@@ -1,0 +1,96 @@
+#!/bin/bash -l
+# Run the full EcoXAI pipeline on one dataset as a BU SCC batch job.
+#
+#   cp mydata.csv $ECOXAI_REPO/ecoxai/backend/datasets/
+#   export SMOKE_CONTEXT="<description + research question>"   # or put it in $OUT/context.txt
+#   qsub -N ecoxai-run -v SMOKE_CONTEXT ecoxai/backend/singularity/scc/pipeline.qsub
+#
+# The backend, the headless driver and every agent container run inside this
+# allocation; nothing is left behind on the login node. Results are archived
+# under $OUT/artifacts.$JOB_ID when the driver returns.
+#
+#$ -P ai4ad
+#$ -l h_rt=08:00:00
+#$ -pe omp 16
+#$ -l ng=TRUE
+#$ -j y
+#$ -cwd
+#$ -o $JOB_NAME.$JOB_ID.log
+
+set -u
+REPO="${ECOXAI_REPO:-$HOME/code/agent/EcoXAI}"
+export ECOXAI_STATE_DIR="${ECOXAI_STATE_DIR:?set ECOXAI_STATE_DIR in ~/.bashrc}"
+OUT="${ECOXAI_RUN_DIR:-$ECOXAI_STATE_DIR/runs}"
+mkdir -p "$OUT"
+
+export PATH="$HOME/opt/node20/bin:$PATH"
+export ECOXAI_RUNTIME=singularity
+# Singularity gets no cgroup limits, so BLAS/XGBoost would size their pools
+# from the node's core count and the scheduler would kill the job. Keep half
+# the slots for the two parallel analyze agents.
+export ECOXAI_AGENT_THREADS=$(( NSLOTS / 2 ))
+
+echo "=== node: $(hostname)  cores: $NSLOTS  $(date) ==="
+node --version; singularity --version
+
+cd "$REPO/ecoxai/backend"
+node server.js > "$OUT/backend.$JOB_ID.log" 2>&1 &
+BE=$!
+trap 'kill $BE 2>/dev/null' EXIT
+
+echo "--- waiting for backend ---"
+for i in $(seq 1 60); do
+  curl -sf --max-time 2 http://localhost:8081/api/health >/dev/null && break
+  sleep 2
+done
+curl -sf --max-time 2 http://localhost:8081/api/health >/dev/null || {
+  echo "BACKEND FAILED"; tail -50 "$OUT/backend.$JOB_ID.log"; exit 1; }
+echo "backend up"
+
+# Driver parameters. SMOKE_FILENAME must match the file dropped into
+# backend/datasets/; SMOKE_CONTEXT is the description + research question
+# injected into every agent prompt.
+export SMOKE_FILENAME="${SMOKE_FILENAME:-ad_repurposing_smoke.csv}"
+export SMOKE_BUDGET_USD="${SMOKE_BUDGET_USD:-20}"
+export SMOKE_CYCLES="${SMOKE_CYCLES:-1}"
+export SMOKE_DEADLINE_MIN="${SMOKE_DEADLINE_MIN:-420}"
+export SMOKE_CONTEXT="${SMOKE_CONTEXT:-$(cat "$OUT/context.txt" 2>/dev/null || true)}"
+[ -n "$SMOKE_CONTEXT" ] || echo "WARNING: SMOKE_CONTEXT is empty — agents get no research question"
+
+# NODE_PATH so the driver can require('ws') from the backend's node_modules.
+NODE_PATH="$REPO/ecoxai/backend/node_modules" node "$REPO/ecoxai/backend/singularity/scc/driver.js"
+RC=$?
+echo "driver exit: $RC"
+
+echo
+echo "=== ARCHIVING RESULTS ==="
+# Workspaces are deleted as soon as each job finishes, so nothing is ever in
+# workspaces/*/output by the time the driver returns. The per-job results
+# (report.md, verdict_results.json, figures, scripts, session.log) are
+# collected into backend/assets/<job>-<title>/ by assetManager, and the dataset
+# wikis into backend/data/wikis/. Those are what to keep.
+ARCH="$OUT/artifacts.$JOB_ID"
+mkdir -p "$ARCH"
+BE_DIR="$REPO/ecoxai/backend"
+if [ -d "$BE_DIR/assets" ]; then
+  cp -r "$BE_DIR/assets" "$ARCH/assets"
+  for d in "$ARCH"/assets/*/; do echo "  $(basename "$d"): $(ls "$d" | wc -l) files"; done
+fi
+[ -d "$BE_DIR/data/wikis" ] && cp -r "$BE_DIR/data/wikis" "$ARCH/wikis"
+cp "$BE_DIR/data/state.json" "$ARCH/" 2>/dev/null
+for f in executions.db executions.db-wal executions.db-shm; do
+  [ -f "$BE_DIR/data/$f" ] && cp "$BE_DIR/data/$f" "$ARCH/"
+done
+# Anything still in a workspace belongs to a job that was cut off mid-run.
+for w in "$ECOXAI_STATE_DIR"/workspaces/*/; do
+  [ -d "$w/output" ] || continue
+  d="$ARCH/unfinished-$(basename "$w")"; mkdir -p "$d"
+  cp -r "$w/output/." "$d/" 2>/dev/null && echo "  unfinished $(basename "$w") ($(ls "$d" | wc -l) files)"
+done
+cp "$OUT/backend.$JOB_ID.log" "$ARCH/" 2>/dev/null
+echo "  archive: $ARCH ($(du -sh "$ARCH" | cut -f1))"
+
+echo
+echo "=== BACKEND LOG (tail 120) ==="
+tail -120 "$OUT/backend.$JOB_ID.log"
+exit $RC

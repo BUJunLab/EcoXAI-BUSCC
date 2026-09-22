@@ -66,6 +66,8 @@ cd ecoxai/backend
 
 ---
 
+> **Running on BU SCC (no Docker)?** See [README-SCC.md](README-SCC.md) for the Singularity setup, batch submission, and example research questions and graph queries.
+
 ## Prerequisites
 
 - **Docker** must be running

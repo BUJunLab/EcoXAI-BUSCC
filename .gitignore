@@ -192,3 +192,4 @@ CLAUDE.md
 # EcoXAI Singularity runtime state (images, python env, node, workspaces)
 ecoxai/backend/data/runtime/
 ecoxai/backend/data/pending/
+ecoxai/backend/data/.backend.lock
