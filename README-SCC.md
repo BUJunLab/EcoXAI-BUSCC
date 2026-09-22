@@ -241,19 +241,16 @@ not, and the question. Everything in it reaches the agents verbatim.
 > near the top? Treat known_ad_drug as a held-out label, never as a predictor.
 > If the evidence does not support a ranking, say so.
 
-**Other research questions that fit the pipeline:**
+**Other research questions that fit the pipeline.** These are not
+alternatives for the drug table above — each needs its own table, with one row
+per the unit named, and its own context paragraph written the same way:
 
-- *Biomarker panel* — "Which plasma proteins best separate AD from controls
-  after adjusting for age, sex and APOE4? Which survive FDR, and is any
-  combination of ≤5 proteins better than the best single one?"
-- *Subgroup / interaction* — "Does the proteomic AD signature differ between
-  APOE4 carriers and non-carriers? Identify proteins whose association with AD
-  is carrier-specific."
-- *Target prioritisation* — "Rank the 843 GWAS-locus genes by convergence of
-  genetic and proteomic evidence, and report which are targets of launched
-  drugs."
-- *Data quality* — "Is the AD-vs-control contrast confounded by batch, dilution
-  group or age? Which columns are unusable and why?"
+| Question | One row per | Table you would build |
+|---|---|---|
+| *Biomarker panel* — "Which plasma proteins best separate AD from controls after adjusting for age, sex and APOE4? Which survive FDR, and is any combination of ≤5 proteins better than the best single one?" | person | individual-level SomaScan + covariates — restricted; check the DUA before any row reaches the API |
+| *Subgroup / interaction* — "Does the proteomic AD signature differ between APOE4 carriers and non-carriers? Which proteins are carrier-specific?" | person | same as above, plus APOE genotype |
+| *Target prioritisation* — "Rank the 843 GWAS-locus genes by convergence of genetic and proteomic evidence, and report which are targets of launched drugs." | gene | re-join the same three sources at the gene level: GWAS p/z, SomaScan p/effect, count of Hub drugs targeting it |
+| *Data quality* — "Is the AD-vs-control contrast confounded by batch, dilution group or age? Which columns are unusable and why?" | protein | the raw `plasma_proteomics_adreagan_results.csv` as is |
 
 The more the question names the unit of analysis, the covariates, and what
 counts as a positive result, the less the agents wander.
