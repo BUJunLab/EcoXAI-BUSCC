@@ -17,6 +17,30 @@ if [ -f "$LOCK" ]; then
   exit 1
 fi
 
+# Every result the pipeline produces — per-job reports, figures, scripts,
+# verdicts — lives in assets/ and data/wikis/. Workspaces are deleted the
+# moment a job finishes, so these directories are the only copy. A reset used
+# to delete them outright, and one run's figures were lost that way. Move them
+# aside first; pass --no-archive to discard.
+ARCHIVE_ROOT="${ECOXAI_ARCHIVE_DIR:-${ECOXAI_STATE_DIR:-$SCRIPT_DIR/data/runtime}/archive}"
+if [ "${1:-}" != "--no-archive" ]; then
+  have=""
+  for d in assets data/wikis; do
+    [ -d "$SCRIPT_DIR/$d" ] && [ -n "$(ls -A "$SCRIPT_DIR/$d" 2>/dev/null)" ] && have=1
+  done
+  if [ -n "$have" ]; then
+    ARCHIVE="$ARCHIVE_ROOT/$(date +%Y%m%d-%H%M%S)"
+    mkdir -p "$ARCHIVE"
+    [ -d "$SCRIPT_DIR/assets" ] && mv "$SCRIPT_DIR/assets" "$ARCHIVE/assets"
+    [ -d "$SCRIPT_DIR/data/wikis" ] && mv "$SCRIPT_DIR/data/wikis" "$ARCHIVE/wikis"
+    cp "$SCRIPT_DIR/data/state.json" "$ARCHIVE/" 2>/dev/null || true
+    for f in executions.db executions.db-wal executions.db-shm; do
+      [ -f "$SCRIPT_DIR/data/$f" ] && cp "$SCRIPT_DIR/data/$f" "$ARCHIVE/"
+    done
+    echo "Archived previous results to $ARCHIVE"
+  fi
+fi
+
 echo '{"jobs":[],"datasets":{},"budget":{"totalCostUsd":0,"jobCount":0,"sessions":[]}}' \
   > "$SCRIPT_DIR/data/state.json"
 
