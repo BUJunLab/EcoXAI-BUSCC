@@ -109,6 +109,27 @@ class Orchestrator extends EventEmitter {
       const stage = PIPELINE_STAGES.find(s => s.id === stageId);
       if (stage) Object.assign(stage, updates);
     }
+    // ECOXAI_STAGE_OVERRIDES: a JSON object {stageId: {skill, prompt, name, auto}}
+    // set for one run, e.g. a batch job that swaps in a domain-specific set of
+    // skills. It is applied last so it beats what the GUI persisted, and is
+    // not persisted itself: the next backend without it runs the stock stages.
+    const envRaw = (process.env.ECOXAI_STAGE_OVERRIDES || '').trim();
+    if (envRaw) {
+      let env;
+      try { env = JSON.parse(envRaw); }
+      catch (err) { throw new Error(`ECOXAI_STAGE_OVERRIDES is not valid JSON: ${err.message}`); }
+      for (const [stageId, updates] of Object.entries(env)) {
+        const stage = PIPELINE_STAGES.find(s => s.id === stageId);
+        if (!stage) throw new Error(`ECOXAI_STAGE_OVERRIDES: unknown stage ${stageId}`);
+        const changes = {};
+        if (updates.skill !== undefined) changes.skill = Array.isArray(updates.skill) ? updates.skill : [updates.skill];
+        if (updates.prompt !== undefined) changes.prompt = updates.prompt;
+        if (updates.name !== undefined) changes.name = updates.name;
+        if (updates.auto !== undefined) changes.auto = !!updates.auto;
+        Object.assign(stage, changes);
+        console.log(`[Orchestrator] Stage ${stageId} overridden from ECOXAI_STAGE_OVERRIDES: ${Object.keys(changes).join(', ')}`);
+      }
+    }
     this._bindEvents();
     console.log('[Orchestrator] Initialized with pipeline stages:', PIPELINE_STAGES.map(s => s.id).join(' → '));
   }

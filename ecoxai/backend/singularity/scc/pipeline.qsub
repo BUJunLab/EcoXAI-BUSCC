@@ -29,6 +29,11 @@ export ECOXAI_RUNTIME=singularity
 # from the node's core count and the scheduler would kill the job. Keep half
 # the slots for the two parallel analyze agents.
 export ECOXAI_AGENT_THREADS=$(( NSLOTS / 2 ))
+# Optional, passed through from `qsub -v`: ECOXAI_STAGE_OVERRIDES swaps in a
+# different skill set for this run (JSON, see README-SCC.md §5);
+# ECOXAI_EXTRA_BINDS mounts reference tables read-only for the agents.
+[ -n "${ECOXAI_STAGE_OVERRIDES:-}" ] && echo "stage overrides: $ECOXAI_STAGE_OVERRIDES"
+[ -n "${ECOXAI_EXTRA_BINDS:-}" ] && echo "extra binds: $ECOXAI_EXTRA_BINDS"
 
 echo "=== node: $(hostname)  cores: $NSLOTS  $(date) ==="
 node --version; singularity --version

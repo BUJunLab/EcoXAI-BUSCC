@@ -320,6 +320,33 @@ and the stage prompts at the top of `ecoxai/backend/orchestrator.js`. Editing
 those changes the pipeline; the backend does not need to be touched. They can
 also be edited live in the GUI (Pipeline → click a stage).
 
+To run a different skill set without editing the stock stages, set
+`ECOXAI_STAGE_OVERRIDES` for that backend (JSON, `{stageId: {skill, prompt}}`).
+It is applied after the GUI's persisted overrides and is not persisted itself.
+The drug-repurposing profile shipped in `skills/public/` is:
+
+```bash
+export ECOXAI_STAGE_OVERRIDES='{
+  "explore":    {"skill": "public:pipeline-explore-evidence",
+                 "prompt": "Run the exploration phase. Follow the pipeline-explore-evidence skill in your workspace."},
+  "hypothesize":{"skill": ["public:pipeline-hypothesize-drug", "hypotheses:alzkb-graph-query"],
+                 "prompt": "Run the hypothesis generation phase. Follow the pipeline-hypothesize-drug skill in your workspace."},
+  "analyze":    {"skill": "public:pipeline-analyze-rank",
+                 "prompt": "Run the hypothesis testing phase for this specific hypothesis.\n\n**Hypothesis:** {hypothesis_text}\n\nFocus ONLY on this single hypothesis. Follow the pipeline-analyze-rank skill in your workspace."}
+}'
+export ECOXAI_EXTRA_BINDS=/projectnb/ai4ad-presibo/scho1/ecoxai-data/v2:/reference:ro
+qsub -N ecoxai-v2 -v ECOXAI_STAGE_OVERRIDES,ECOXAI_EXTRA_BINDS,SMOKE_FILENAME,SMOKE_BUDGET_USD ecoxai/backend/singularity/scc/pipeline.qsub
+```
+
+Those three skills expect the v2 evidence tables built by
+`scripts/assemble_ad_repurposing_v2.py` (documented in
+`scripts/ad_repurposing_v2_DATA_CATALOG.md`): the drug table goes into
+`backend/datasets/`, the drug×target table and the catalog are mounted at
+`/reference/`. They differ from the stock skills in exactly the ways the
+2026-09-22 run showed were needed: no cleaning, entity-level hypothesis types
+with a mechanism chain, held-out trial labels, and an analysis skeleton of
+pre-registered test + target-level ablation + negative controls.
+
 Things the stock skills assume that you may need to change for a new problem:
 
 - explore imputes missing values with the median, clips numerics at 3×IQR and
